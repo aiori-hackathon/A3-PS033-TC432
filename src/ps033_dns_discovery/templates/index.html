@@ -1,0 +1,514 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PS-033 | Secure DNS Discovery</title>
+
+<style>
+:root {
+    color-scheme: dark;
+    --bg: #0b1020;
+    --panel: #151d32;
+    --border: #2b3957;
+    --text: #e8edf8;
+    --muted: #aebbd4;
+    --blue: #5275ed;
+    --green: #39c98a;
+    --red: #f16c78;
+    --yellow: #eab95c;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px system-ui, sans-serif;
+}
+
+main {
+    max-width: 1100px;
+    margin: auto;
+    padding: 28px 20px;
+}
+
+header { margin-bottom: 25px; }
+
+h1 { font-size: clamp(25px, 4vw, 34px); margin-bottom: 8px; }
+h2 { font-size: 20px; margin-top: 0; }
+h3 { font-size: 16px; }
+
+p, small { color: var(--muted); line-height: 1.6; }
+
+.panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px;
+    margin: 17px 0;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 12px;
+}
+
+.metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+    gap: 12px;
+    margin: 16px 0;
+}
+
+.metric {
+    background: #0d1528;
+    border: 1px solid var(--border);
+    padding: 17px;
+    border-radius: 11px;
+}
+
+.metric strong {
+    display: block;
+    font-size: 29px;
+    margin-top: 5px;
+}
+
+button {
+    background: var(--blue);
+    color: white;
+    border: 0;
+    border-radius: 8px;
+    padding: 12px 15px;
+    margin: 4px;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+button:hover { filter: brightness(1.15); }
+button:disabled { opacity: .55; cursor: wait; }
+button.alt { background: #293650; }
+button.danger { background: #963e50; }
+
+pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    background: #090e19;
+    padding: 14px;
+    border-radius: 9px;
+    min-height: 55px;
+    overflow-x: auto;
+    color: #d8e4ff;
+}
+
+.status {
+    display: inline-block;
+    padding: 5px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.passed { background: #123d32; color: #72e5b2; }
+.rejected { background: #49232d; color: #ff9ba6; }
+.failed { background: #49232d; color: #ff9ba6; }
+.blocked { background: #30394c; color: #bdc8dd; }
+.pending { background: #3e351e; color: #f2d48c; }
+.running { background: #1d3765; color: #a9c6ff; }
+.not_verified { background: #493923; color: #f4c477; }
+
+.pipeline {
+    display: grid;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.stage {
+    border: 1px solid var(--border);
+    background: #0d1528;
+    border-radius: 10px;
+    padding: 14px;
+}
+
+.stage-top {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+}
+
+.stage p { margin-bottom: 0; font-size: 13px; }
+
+.test-item {
+    border: 1px solid var(--border);
+    background: #0d1528;
+    border-radius: 10px;
+    padding: 13px;
+    margin: 10px 0;
+}
+
+.test-item p { margin-bottom: 0; font-size: 13px; }
+
+.muted { color: var(--muted); }
+
+footer {
+    text-align: center;
+    padding: 25px 0;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+@media(max-width: 600px) {
+    main { padding: 18px 12px; }
+    .panel { padding: 15px; }
+    .stage-top { align-items: flex-start; flex-direction: column; }
+}
+</style>
+</head>
+
+<body>
+<main>
+
+<header>
+    <h1>PS-033: DNS-Based Discovery of Diagnostic Services</h1>
+    <p>
+        Securely discover diagnostic services using DNS TXT records,
+        DNSSEC signature verification, metadata validation and
+        authenticated invocation.
+    </p>
+</header>
+
+<section class="panel">
+    <h2>System status</h2>
+    <p id="status">Connecting to the local lab...</p>
+    <small>
+        DNS server: 127.0.0.1:53535 |
+        Mock services: 127.0.0.1:5055 |
+        Dashboard: 127.0.0.1:5000
+    </small>
+</section>
+
+<section class="panel">
+    <h2>1. Diagnostic service discovery</h2>
+    <p>Select a diagnostic service to discover and invoke it.</p>
+
+    <div class="grid">
+        <button onclick="run('latency')">Latency probe</button>
+        <button onclick="run('traceroute')">Traceroute probe</button>
+        <button onclick="run('health')">Health check</button>
+    </div>
+
+    <h3>Discovery verification pipeline</h3>
+    <div id="pipeline" class="pipeline">
+        <p class="muted">Select a service to view its verification stages.</p>
+    </div>
+
+    <h3>Invocation result</h3>
+    <pre id="result">No service selected yet.</pre>
+</section>
+
+<section class="panel">
+    <h2>2. Security testing laboratory</h2>
+    <p>
+        Test how the discovery system responds to invalid signatures,
+        malformed metadata, invalid credentials and unavailable endpoints.
+    </p>
+
+    <div class="grid">
+        <button class="alt" onclick="mode('bogus')">Test bogus signature</button>
+        <button class="alt" onclick="mode('malformed')">Test malformed metadata</button>
+        <button class="alt" onclick="badToken()">Test wrong bearer token</button>
+        <button class="alt" onclick="move()">Test unavailable endpoint</button>
+        <button onclick="restore()">Restore normal data</button>
+        <button onclick="tests()">Run complete security suite</button>
+    </div>
+
+    <div class="metrics">
+        <div class="metric">
+            <small>Total scenarios</small>
+            <strong id="total">--</strong>
+        </div>
+        <div class="metric">
+            <small>Passed</small>
+            <strong id="passed">--</strong>
+        </div>
+        <div class="metric">
+            <small>Failed</small>
+            <strong id="failed">--</strong>
+        </div>
+        <div class="metric">
+            <small>Security scenarios</small>
+            <strong id="security">--</strong>
+        </div>
+        <div class="metric">
+            <small>Detected and rejected</small>
+            <strong id="detected">--</strong>
+        </div>
+    </div>
+
+    <h3>Individual test results</h3>
+    <div id="testResults">
+        <p class="muted">Run the security suite to see results.</p>
+    </div>
+
+    <h3>Test summary</h3>
+    <pre id="testSummary">Waiting for security tests...</pre>
+</section>
+
+<section class="panel">
+    <h2>3. How the security pipeline works</h2>
+
+    <div class="pipeline">
+        <div class="stage">
+            <b>01 — DNS discovery</b>
+            <p>Retrieve diagnostic service metadata from DNS TXT records.</p>
+        </div>
+
+        <div class="stage">
+            <b>02 — DNSSEC verification</b>
+            <p>Verify the TXT record's RRSIG using the locally pinned DNSKEY.</p>
+        </div>
+
+        <div class="stage">
+            <b>03 — Metadata validation</b>
+            <p>Validate required fields, authentication method and approved local endpoints.</p>
+        </div>
+
+        <div class="stage">
+            <b>04 — Authentication</b>
+            <p>Send a bearer token to the selected diagnostic service.</p>
+        </div>
+
+        <div class="stage">
+            <b>05 — Service invocation</b>
+            <p>Invoke the discovered endpoint and display its response.</p>
+        </div>
+    </div>
+</section>
+
+<section class="panel">
+    <h2>4. Technical limitations</h2>
+    <p>
+        This is an educational local prototype. It uses a locally pinned
+        DNSKEY and verifies the DNS TXT RRset signature. It does not
+        implement full public DNS root-to-zone DNSSEC chain validation.
+        Diagnostic measurements and traceroute responses are simulated.
+        The mock services run locally for demonstration purposes.
+    </p>
+</section>
+
+<footer>
+    PS-033 | DNS-Based Discovery of Diagnostic Services
+    <br>AIORI 3 Hackathon — Educational Demonstration
+</footer>
+
+</main>
+
+<script>
+const pipelineElement = document.getElementById("pipeline");
+const resultElement = document.getElementById("result");
+const testResultsElement = document.getElementById("testResults");
+
+async function post(path, data = {}) {
+    const response = await fetch(path, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(data)
+    });
+
+    const body = await response.json();
+
+    if (!response.ok && !body.error && !body.pipeline) {
+        throw new Error("Request failed with HTTP " + response.status);
+    }
+
+    return body;
+}
+
+function showPipeline(stages = []) {
+    pipelineElement.replaceChildren();
+
+    if (!stages.length) {
+        pipelineElement.textContent = "No pipeline information available.";
+        return;
+    }
+
+    stages.forEach(stage => {
+        const card = document.createElement("div");
+        card.className = "stage";
+
+        const top = document.createElement("div");
+        top.className = "stage-top";
+
+        const label = document.createElement("b");
+        label.textContent = stage.label;
+
+        const badge = document.createElement("span");
+        badge.className = "status " + stage.status;
+        badge.textContent = stage.status.replace("_", " ");
+
+        const detail = document.createElement("p");
+        detail.textContent = stage.detail;
+
+        top.append(label, badge);
+        card.append(top, detail);
+        pipelineElement.append(card);
+    });
+}
+
+async function run(service, badToken = false) {
+    resultElement.textContent = "Running discovery and verification...";
+    pipelineElement.textContent = "Processing verification stages...";
+
+    try {
+        const data = await post("/api/run", {
+            service: service,
+            bad_token: badToken
+        });
+
+        showPipeline(data.pipeline);
+
+        resultElement.textContent = JSON.stringify(data, null, 2);
+
+    } catch (error) {
+        resultElement.textContent = "Error: " + error.message;
+    }
+}
+
+async function mode(selectedMode) {
+    try {
+        const data = await post("/api/mode", {
+            mode: selectedMode
+        });
+
+        document.getElementById("testSummary").textContent =
+            "DNS mode changed to: " + data.mode +
+            "\nSelect a service to observe the security response.";
+
+        await refreshStatus();
+
+    } catch (error) {
+        document.getElementById("testSummary").textContent =
+            "Error: " + error.message;
+    }
+}
+
+async function badToken() {
+    await run("health", true);
+}
+
+async function move() {
+    try {
+        const data = await post("/api/move");
+        document.getElementById("testSummary").textContent = data.message;
+        await refreshStatus();
+    } catch (error) {
+        document.getElementById("testSummary").textContent =
+            "Error: " + error.message;
+    }
+}
+
+async function restore() {
+    try {
+        const data = await post("/api/restore");
+        document.getElementById("testSummary").textContent = data.message;
+        showPipeline([]);
+        await refreshStatus();
+    } catch (error) {
+        document.getElementById("testSummary").textContent =
+            "Error: " + error.message;
+    }
+}
+
+function renderTests(data) {
+    const metrics = data.metrics || {};
+
+    document.getElementById("total").textContent = metrics.total ?? "--";
+    document.getElementById("passed").textContent = metrics.passed ?? "--";
+    document.getElementById("failed").textContent = metrics.failed ?? "--";
+    document.getElementById("security").textContent =
+        metrics.security_scenarios ?? "--";
+    document.getElementById("detected").textContent =
+        metrics.detected_and_rejected ?? "--";
+
+    testResultsElement.replaceChildren();
+
+    (data.tests || []).forEach(test => {
+        const card = document.createElement("div");
+        card.className = "test-item";
+
+        const title = document.createElement("b");
+        title.textContent = test.case;
+
+        const badge = document.createElement("span");
+        badge.className = "status " + test.outcome.toLowerCase();
+        badge.textContent = test.outcome;
+
+        const detail = document.createElement("p");
+        detail.textContent =
+            "Expected: " + test.expected +
+            " | Observed: " + test.observed +
+            " | " + test.detail;
+
+        card.append(title, document.createTextNode(" "), badge, detail);
+        testResultsElement.append(card);
+    });
+
+    document.getElementById("testSummary").textContent =
+        (data.summary || "Test run completed.") +
+        "\nPassed: " + metrics.passed +
+        "\nFailed: " + metrics.failed +
+        "\nSecurity scenarios: " + metrics.security_scenarios +
+        "\nDetected and rejected: " + metrics.detected_and_rejected;
+}
+
+async function tests() {
+    const button = [...document.querySelectorAll("button")]
+        .find(item => item.textContent === "Run complete security suite");
+
+    button.disabled = true;
+    button.textContent = "Running tests...";
+
+    try {
+        const data = await post("/api/test");
+        renderTests(data);
+    } catch (error) {
+        document.getElementById("testSummary").textContent =
+            "Security test error: " + error.message;
+    } finally {
+        button.disabled = false;
+        button.textContent = "Run complete security suite";
+        await refreshStatus();
+    }
+}
+
+async function refreshStatus() {
+    const element = document.getElementById("status");
+
+    try {
+        const response = await fetch("/api/status");
+        if (!response.ok) throw new Error("Dashboard unavailable");
+
+        const data = await response.json();
+
+        element.textContent =
+            "READY | DNS mode: " + data.mode +
+            " | DNS: " + data.dns +
+            " | Services: " + data.services;
+
+        element.style.color = "#72e5b2";
+
+    } catch (error) {
+        element.textContent = "Dashboard API unavailable";
+        element.style.color = "#ff9ba6";
+    }
+}
+
+refreshStatus();
+</script>
+</body>
+</html>
